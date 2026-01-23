@@ -1,0 +1,24 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: asb-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: asb
+      MYSQL_USER: asb
+      MYSQL_PASSWORD: asb
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - asb_mysql:/var/lib/mysql
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: asb-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  asb_mysql:
