@@ -46,8 +46,9 @@ public class SummarizationJob {
     @Column(name="result_text")
     private String resultText;
 
+    @Enumerated(EnumType.STRING)
     @Column(name="error_code", length=50)
-    private String errorCode;
+    private JobErrorCode errorCode;
 
     @Column(name="error_message", length=500)
     private String errorMessage;
@@ -76,18 +77,18 @@ public class SummarizationJob {
         this.updatedAt = now;
     }
 
-    public void markSuccess(String resultText, LocalDateTime now) {
+    public void markSuccess(String resultText) {
         this.status = JobStatus.SUCCESS;
         this.resultText = resultText;
-        this.finishedAt = now;
-        this.updatedAt = now;
+        this.finishedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 
-    public void markFailed(String errorCode, String errorMessage, LocalDateTime now) {
+    public void markFailed(JobErrorCode errorCode, String errorMessage) {
         this.status = JobStatus.FAILED;
         this.errorCode = errorCode;
         this.errorMessage = errorMessage;
-        this.finishedAt = now;
-        this.updatedAt = now;
+        this.finishedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 }
