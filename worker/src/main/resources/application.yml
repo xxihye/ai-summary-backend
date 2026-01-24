@@ -20,3 +20,9 @@ spring:
 logging:
   level:
     root: info
+
+worker:
+  consumer-name: worker-1
+  group-name: sum-workers
+  stream-key: stream:sum:jobs
+  value-key: jobId
