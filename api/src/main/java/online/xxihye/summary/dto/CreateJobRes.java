@@ -1,7 +1,9 @@
 package online.xxihye.summary.dto;
 
+import lombok.Getter;
 import online.xxihye.summary.domain.JobStatus;
 
+@Getter
 public class CreateJobRes {
 
     private final Long jobId;
