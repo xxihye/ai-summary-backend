@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.repository.SummarizationJobRepository;
+import online.xxihye.worker.exception.AiProcessException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -56,15 +57,24 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     public void ensureGroup() {
         try {
             redis.opsForStream()
-                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
-        } catch (Exception ignore) {
-            ignore.printStackTrace();
+//                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
+                 .createGroup(STREAM_KEY, ReadOffset.from("0-0"), GROUP);
+            log.info("stream group created. stream={}, group={}", STREAM_KEY, GROUP);
+        } catch (Exception e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+
+            if (msg.contains("BUSYGROUP")) {
+                log.info("stream group already exists. stream={}, group={}", STREAM_KEY, GROUP);
+                return;
+            }
+
+            log.warn("failed to create stream group. stream={}, group={}", STREAM_KEY, GROUP);
         }
     }
 
     @Override
     public void run(String... args) {
-        while (true) {
+        while (!Thread.currentThread().isInterrupted()) {
             try {
                 List<MapRecord<String, Object, Object>> records = readOnce();
 
@@ -72,7 +82,8 @@ public class SummarizationStreamWorker implements CommandLineRunner {
                     handleRecord(record);
                 }
             } catch (Exception e) {
-                sleep(300);
+                log.error("worker loop error", e.getMessage());
+                loopBackoff();
             }
         }
     }
@@ -120,8 +131,17 @@ public class SummarizationStreamWorker implements CommandLineRunner {
             Long jobId = Long.valueOf(jobIdObj.toString());
             jobProcessor.process(jobId);
             ack(record);
+        } catch(AiProcessException e){
+            //재시도 대상
+            if(isRetryable(e.getErrorCode())){
+                return;
+            }
+
+            //재시도 대상 아님.
+            ack(record);
         } catch (Exception e) {
-            log.error("job process error", e);
+            //예측못한 오류로 재시도 안함.
+            log.error("job process error", e.getMessage());
         }
     }
 
@@ -156,11 +176,17 @@ public class SummarizationStreamWorker implements CommandLineRunner {
              .acknowledge(STREAM_KEY, GROUP, record.getId());
     }
 
-    private void sleep(long ms) {
+    private boolean isRetryable(JobErrorCode code) {
+        return code == JobErrorCode.AI_RATE_LIMITED
+            || code == JobErrorCode.AI_TIMEOUT
+            || code == JobErrorCode.AI_UNAVAILABLE;
+    }
+
+    private void loopBackoff() {
         try {
-            Thread.sleep(ms);
-        } catch (InterruptedException ignored) {
-            ignored.printStackTrace();
+            Thread.sleep(200);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt(); // interrupt 상태 복구
         }
     }
 }
