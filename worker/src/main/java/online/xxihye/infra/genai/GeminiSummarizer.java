@@ -6,6 +6,9 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
 import online.xxihye.summary.summarizer.Summarizer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -14,7 +17,7 @@ public class GeminiSummarizer implements Summarizer {
     private final Client client;
     private final String model;
 
-    public GeminiSummarizer(Client client, @Value("${genai.model}") String model) {
+    public GeminiSummarizer(Client client, @Value("${gemini.model}") String model) {
         this.client = client;
         this.model = model;
     }
@@ -23,6 +26,17 @@ public class GeminiSummarizer implements Summarizer {
         return model;
     }
 
+    @Retryable(
+        include = {
+            IllegalStateException.class,   // empty response
+            RuntimeException.class          // 네트워크/SDK 오류
+        },
+        exclude = {
+            IllegalArgumentException.class  // 입력 오류
+        },
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 500, multiplier = 2)
+    )
     public String summarize(String text) {
         if (!StringUtils.hasText(text)) {
             throw new IllegalArgumentException("text is empty");
@@ -53,4 +67,5 @@ public class GeminiSummarizer implements Summarizer {
 
         return out.trim();
     }
+
 }
