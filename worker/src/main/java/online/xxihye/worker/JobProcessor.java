@@ -6,6 +6,7 @@ import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.domain.JobStatus;
 import online.xxihye.summary.domain.SummarizationJob;
 import online.xxihye.summary.repository.SummarizationJobRepository;
+import online.xxihye.summary.summarizer.Summarizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.util.Optional;
 public class JobProcessor {
 
     private final SummarizationJobRepository repository;
+    private final Summarizer summarizer;
 
     @Transactional
     public void process(Long jobId) {
@@ -42,7 +44,8 @@ public class JobProcessor {
             }
 
             //다른 컨슈머가 처리하는 걸로 판단
-            JobStatus current = opt.get().getStatus();
+            JobStatus current = opt.get()
+                                   .getStatus();
             log.info("skip processing due to status. jobId={}, status={}", jobId, current);
             return;
         }
@@ -51,18 +54,20 @@ public class JobProcessor {
                                          .orElseThrow();
 
         try {
-            String summary = "SUMMARY: " + job.getInputTextLen() + " chars";
-            job.markSuccess(summary);
+            String summary = summarizer.summarize(job.getInputText());
+            String usedModel = summarizer.getModelName();
+            job.markSuccess(summary, usedModel);
 
             log.info("job success. jobId={}", jobId);
         } catch (Exception e) {
             String msg = e.getMessage();
 
             if (msg != null && !msg.isBlank()) {
-                e.getClass().getSimpleName();
+                e.getClass()
+                 .getSimpleName();
             }
 
-            job.markFailed(JobErrorCode.SUMMARY_FAILED, msg);
+            job.markFailed(JobErrorCode.SUMMARY_FAILED, msg, summarizer.getModelName());
             log.error("job failed. jobId={}, errorCode={}, message={}", jobId, JobErrorCode.SUMMARY_FAILED, msg, e);
         }
     }
