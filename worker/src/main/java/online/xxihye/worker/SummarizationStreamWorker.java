@@ -1,23 +1,30 @@
 package online.xxihye.worker;
 
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.repository.SummarizationJobRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.PendingMessage;
+import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-
+@Slf4j
 @Component
 public class SummarizationStreamWorker implements CommandLineRunner {
 
@@ -34,14 +41,14 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     private String VALUE_KEY;
 
     private final RedisTemplate<String, String> redis;
-    private final SummarizationJobRepository repo;
+    private final SummarizationJobRepository repository;
     private final JobProcessor jobProcessor;
 
     public SummarizationStreamWorker(@Qualifier("redisTemplate") RedisTemplate<String, String> redis,
-                                     SummarizationJobRepository repo,
+                                     SummarizationJobRepository repository,
                                      JobProcessor jobProcessor) {
         this.redis = redis;
-        this.repo = repo;
+        this.repository = repository;
         this.jobProcessor = jobProcessor;
     }
 
@@ -86,6 +93,19 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     }
 
     private void handleRecord(MapRecord<String, Object, Object> record) {
+        long deliveryCount = getDeliveryCount(record);
+
+        if (deliveryCount > 3) {
+            Long jobId = Long.valueOf(record.getValue()
+                                            .get(VALUE_KEY)
+                                            .toString());
+            log.warn("retry exceeded jobId={} delivery={}", jobId, deliveryCount);
+
+            markFailedRetryExceeded(jobId);
+            ack(record);
+            return;
+        }
+
         try {
             Map<Object, Object> value = record.getValue();
             Object jobIdObj = value.get(VALUE_KEY);
@@ -101,9 +121,34 @@ public class SummarizationStreamWorker implements CommandLineRunner {
             jobProcessor.process(jobId);
             ack(record);
         } catch (Exception e) {
-            e.printStackTrace();
-            // TODO : 실패 시 ACK 안 하고 PEL에서 재처리
+            log.error("job process error", e);
         }
+    }
+
+    private long getDeliveryCount(MapRecord<String, Object, Object> record) {
+        String entryId = record.getId()
+                               .getValue();
+
+        PendingMessages pending = redis.opsForStream()
+                                       .pending(STREAM_KEY, GROUP, Range.closed(entryId, entryId), 1);
+
+        if (pending.isEmpty()) {
+            return 1L; // 최초 전달
+        }
+
+        PendingMessage pm = pending.get(0);
+        return pm.getTotalDeliveryCount();
+    }
+
+    @Transactional
+    public void markFailedRetryExceeded(Long jobId) {
+        repository.findById(jobId)
+                  .ifPresent(job ->
+                      job.markFailed(
+                          JobErrorCode.RETRY_EXCEEDED,
+                          "retry count exceeded", null
+                      )
+                  );
     }
 
     private void ack(MapRecord<String, Object, Object> record) {
