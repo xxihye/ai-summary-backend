@@ -26,3 +26,7 @@ worker:
   group-name: sum-workers
   stream-key: stream:sum:jobs
   value-key: jobId
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+
