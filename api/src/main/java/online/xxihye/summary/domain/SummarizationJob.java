@@ -34,13 +34,17 @@ public class SummarizationJob {
     @Column(nullable=false, length=20)
     private JobStatus status;
 
+    @Lob
+    @Column(name = "input_text", columnDefinition = "TEXT", nullable = false)
+    private String inputText;
+
     @Column(name="input_hash", nullable=false, length=64)
     private String inputHash;
 
     @Column(name="input_text_len", nullable=false)
     private Integer inputTextLen;
 
-    @Column(nullable=false, length=50)
+    @Column(length=50)
     private String model;
 
     @Column(name="prompt_version", nullable=false, length=20)
@@ -76,18 +80,22 @@ public class SummarizationJob {
 
     protected SummarizationJob() {}
 
-    public SummarizationJob(Long userId, String inputHash, int inputTextLen, String model) {
+    public SummarizationJob(Long userId, String text, String inputHash, int inputTextLen) {
         this.userId = userId;
+        this.inputText = text;
         this.status = JobStatus.PENDING;
         this.inputHash = inputHash;
         this.inputTextLen = inputTextLen;
-        this.model = model;
         this.promptVersion = "v1";
         this.cacheHit = false;
     }
 
     public Long getId() {
         return id;
+    }
+
+    public String getInputText() {
+        return inputText;
     }
 
     public JobStatus getStatus() {

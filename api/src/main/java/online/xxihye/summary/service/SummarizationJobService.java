@@ -27,11 +27,9 @@ public class SummarizationJobService {
         //todo : 지금은 하드코딩
         Long userId = 1L;
         String text = req.getText().trim();
-        String model = (req.getModel() == null || req.getModel().isBlank()) ? "dummy-model" : req.getModel();
-
         String inputHash = HashUtil.sha256(text);
 
-        SummarizationJob job = new SummarizationJob(userId, inputHash, text.length(), model);
+        SummarizationJob job = new SummarizationJob(userId, text, inputHash, text.length());
         repository.save(job);
 
         queue.enqueue(job.getId());
