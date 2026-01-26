@@ -46,7 +46,7 @@ public class SummarizationJobService {
 
     public JobResultRes getResult(Long jobId) {
         SummarizationJob job = repository.findById(jobId)
-                                   .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
+                                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
 
         //성공한 경우가 아닌 경우, 예외 처리
         if (job.getStatus() != JobStatus.SUCCESS) {
