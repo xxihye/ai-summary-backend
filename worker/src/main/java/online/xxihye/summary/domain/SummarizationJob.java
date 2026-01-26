@@ -95,6 +95,7 @@ public class SummarizationJob {
     }
 
     public void markFailed(JobErrorCode errorCode, String errorMessage, String model) {
+        System.out.println("도메인까지 접근");
         this.status = JobStatus.FAILED;
         this.model = model;
         this.errorCode = errorCode;

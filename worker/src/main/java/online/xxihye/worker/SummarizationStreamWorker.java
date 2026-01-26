@@ -8,22 +8,17 @@ import online.xxihye.worker.exception.AiProcessException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.PendingMessage;
-import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Component
@@ -38,38 +33,58 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     @Value("${worker.consumer-name}")
     private String CONSUMER;
 
-    @Value("${worker.value-key}")
-    private String VALUE_KEY;
+    @Value("${worker.job-key}")
+    private String JOB_KEY;
+
+    @Value("${worker.attempt-key}")
+    private String ATTEMPT_KEY;
+
+    private static final int MAX_ATTEMPTS = 3;
 
     private final RedisTemplate<String, String> redis;
-    private final SummarizationJobRepository repository;
     private final JobProcessor jobProcessor;
+    private final JobTransitionService transitionService;
+    private final StreamRetryPublisher retryPublisher;
+
 
     public SummarizationStreamWorker(@Qualifier("redisTemplate") RedisTemplate<String, String> redis,
-                                     SummarizationJobRepository repository,
-                                     JobProcessor jobProcessor) {
+                                     JobProcessor jobProcessor,
+                                     JobTransitionService transitionService1,
+                                     StreamRetryPublisher retryPublisher
+    ) {
         this.redis = redis;
-        this.repository = repository;
         this.jobProcessor = jobProcessor;
+        this.transitionService = transitionService1;
+        this.retryPublisher = retryPublisher;
     }
 
     @PostConstruct
     public void ensureGroup() {
         try {
             redis.opsForStream()
-//                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
+                 //todo: 커밋전 코드 바꾸기
                  .createGroup(STREAM_KEY, ReadOffset.from("0-0"), GROUP);
+//                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
             log.info("stream group created. stream={}, group={}", STREAM_KEY, GROUP);
         } catch (Exception e) {
-            String msg = e.getMessage() == null ? "" : e.getMessage();
-
-            if (msg.contains("BUSYGROUP")) {
+            if (isBusyGroup(e)) {
                 log.info("stream group already exists. stream={}, group={}", STREAM_KEY, GROUP);
                 return;
             }
-
-            log.warn("failed to create stream group. stream={}, group={}", STREAM_KEY, GROUP);
+            log.warn("failed to create stream group. stream={}, group={}", STREAM_KEY, GROUP, e);
         }
+    }
+
+    //존재하는 그룹으로 인한 Exception 인지 확인
+    private boolean isBusyGroup(Throwable e) {
+        Throwable cause = e;
+        while (cause != null) {
+            if (cause instanceof io.lettuce.core.RedisBusyException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     @Override
@@ -88,6 +103,7 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         }
     }
 
+    //Stream 메시지 읽기
     private List<MapRecord<String, Object, Object>> readOnce() {
         StreamReadOptions options = StreamReadOptions.empty()
                                                      .count(10)
@@ -103,37 +119,40 @@ public class SummarizationStreamWorker implements CommandLineRunner {
                     );
     }
 
+    //메시지 처리
     private void handleRecord(MapRecord<String, Object, Object> record) {
-        long deliveryCount = getDeliveryCount(record);
+        Object jobIdObj = record.getValue().get(JOB_KEY);
+        if (jobIdObj == null) {
+            ack(record);
+            return;
+        }
 
-        if (deliveryCount > 3) {
-            Long jobId = Long.valueOf(record.getValue()
-                                            .get(VALUE_KEY)
-                                            .toString());
-            log.warn("retry exceeded jobId={} delivery={}", jobId, deliveryCount);
+        Long jobId = Long.valueOf(jobIdObj.toString());
+        int attempt = parseAttempt(record.getValue().get(ATTEMPT_KEY));
 
-            markFailedRetryExceeded(jobId);
+        if (attempt >= MAX_ATTEMPTS) {
+            int updated = transitionService.markFailed(
+                jobId,
+                JobErrorCode.RETRY_EXCEEDED,
+                "retry count exceeded",
+                null,
+                LocalDateTime.now()
+            );
+
+            log.info("job failed. jobId={}, errorCode={}, updated={}", jobId, JobErrorCode.RETRY_EXCEEDED, updated);
             ack(record);
             return;
         }
 
         try {
-            Map<Object, Object> value = record.getValue();
-            Object jobIdObj = value.get(VALUE_KEY);
-
-            //jobId 값이 없는 경우, ack 처리
-            if (jobIdObj == null) {
-                ack(record);
-                return;
-            }
-
-            //처리후 ack 처리
-            Long jobId = Long.valueOf(jobIdObj.toString());
             jobProcessor.process(jobId);
             ack(record);
-        } catch(AiProcessException e){
+
+        } catch (AiProcessException e) {
             //재시도 대상
-            if(isRetryable(e.getErrorCode())){
+            if (isRetryable(e.getErrorCode())) {
+                ack(record);
+                retryPublisher.requeue(jobId, attempt + 1);
                 return;
             }
 
@@ -141,39 +160,19 @@ public class SummarizationStreamWorker implements CommandLineRunner {
             ack(record);
         } catch (Exception e) {
             //예측못한 오류로 재시도 안함.
-            log.error("job process error", e.getMessage());
+            log.error("job process error", e);
+            ack(record);
         }
-    }
-
-    private long getDeliveryCount(MapRecord<String, Object, Object> record) {
-        String entryId = record.getId()
-                               .getValue();
-
-        PendingMessages pending = redis.opsForStream()
-                                       .pending(STREAM_KEY, GROUP, Range.closed(entryId, entryId), 1);
-
-        if (pending.isEmpty()) {
-            return 1L; // 최초 전달
-        }
-
-        PendingMessage pm = pending.get(0);
-        return pm.getTotalDeliveryCount();
-    }
-
-    @Transactional
-    public void markFailedRetryExceeded(Long jobId) {
-        repository.findById(jobId)
-                  .ifPresent(job ->
-                      job.markFailed(
-                          JobErrorCode.RETRY_EXCEEDED,
-                          "retry count exceeded", null
-                      )
-                  );
     }
 
     private void ack(MapRecord<String, Object, Object> record) {
         redis.opsForStream()
              .acknowledge(STREAM_KEY, GROUP, record.getId());
+    }
+
+    private int parseAttempt(Object raw) {
+        if (raw == null) return 0;
+        return Integer.parseInt(raw.toString());
     }
 
     private boolean isRetryable(JobErrorCode code) {
@@ -186,7 +185,8 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt(); // interrupt 상태 복구
+            Thread.currentThread()
+                  .interrupt(); // interrupt 상태 복구
         }
     }
 }

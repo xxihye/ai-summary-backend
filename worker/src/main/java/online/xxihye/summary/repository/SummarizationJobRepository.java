@@ -1,5 +1,6 @@
 package online.xxihye.summary.repository;
 
+import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.domain.JobStatus;
 import online.xxihye.summary.domain.SummarizationJob;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -27,4 +28,51 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
         @Param("startedAt") LocalDateTime startedAt,
         @Param("updatedAt") LocalDateTime updatedAt
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update SummarizationJob j
+       set j.status = :toStatus,
+           j.resultText = :resultText,
+           j.model = :model,
+           j.finishedAt = :finishedAt,
+           j.updatedAt = :updatedAt
+     where j.id = :id
+       and j.status = :fromStatus
+""")
+    int markSuccessIfRunning(
+        @Param("id") Long id,
+        @Param("fromStatus") JobStatus fromStatus,
+        @Param("toStatus") JobStatus toStatus,
+        @Param("resultText") String resultText,
+        @Param("model") String model,
+        @Param("finishedAt") LocalDateTime finishedAt,
+        @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update SummarizationJob j
+       set j.status = :toStatus,
+           j.errorCode = :errorCode,
+           j.errorMessage = :errorMessage,
+           j.model = :model,
+           j.finishedAt = :finishedAt,
+           j.updatedAt = :updatedAt
+     where j.id = :id
+       and j.status in :fromStatuses
+""")
+    int markFailedIfPendingOrRunning(
+        @Param("id") Long id,
+        @Param("fromStatuses") java.util.Collection<JobStatus> fromStatuses, // List.of(PENDING, RUNNING)
+        @Param("toStatus") JobStatus toStatus,                               // FAILED
+        @Param("errorCode") JobErrorCode errorCode,
+        @Param("errorMessage") String errorMessage,
+        @Param("model") String model,
+        @Param("finishedAt") java.time.LocalDateTime finishedAt,
+        @Param("updatedAt") java.time.LocalDateTime updatedAt
+    );
+
+
+
 }

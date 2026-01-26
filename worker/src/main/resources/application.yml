@@ -25,9 +25,10 @@ worker:
   consumer-name: worker-1
   group-name: sum-workers
   stream-key: stream:sum:jobs
-  value-key: jobId
+  job-key: jobId
+  attempt-key: attempt
 
 gemini:
-  api-key: ${GEMINI_API_KEY:}
+  api-key: ${GEMINI_API_KEY}
   model: gemini-2.5-flash
 

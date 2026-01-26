@@ -2,7 +2,7 @@ package online.xxihye.worker;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import online.xxihye.infra.genai.AiErrorPatterns;
+import online.xxihye.infra.gemini.AiErrorPatterns;
 import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.domain.JobStatus;
 import online.xxihye.summary.domain.SummarizationJob;
@@ -22,51 +22,49 @@ import java.util.Optional;
 public class JobProcessor {
 
     private final SummarizationJobRepository repository;
+    private final JobTransitionService transitionService;
     private final Summarizer summarizer;
 
-    @Transactional
     public void process(Long jobId) {
-        LocalDateTime now = LocalDateTime.now();
 
-        int updated = repository.moveToRunningIfPending(
-            jobId,
-            JobStatus.PENDING,
-            JobStatus.RUNNING,
-            now,
-            now
-        );
+        int running = transitionService.moveToRunning(jobId, LocalDateTime.now());
 
-        if (updated == 0) {
-            //해당 jobId를 가진 job db 조회
-            Optional<SummarizationJob> opt = repository.findById(jobId);
-
-            //Stream 메시지와 DB 오류
-            if (opt.isEmpty()) {
-                log.warn("job not found. jobId={}", jobId);
-                return;
-            }
-
-            //다른 컨슈머가 처리하는 걸로 판단
-            JobStatus current = opt.get().getStatus();
-            log.info("skip processing due to status. jobId={}, status={}", jobId, current);
+        if (running == 0) {
+            repository.findById(jobId)
+                      .ifPresentOrElse(
+                          j -> log.info("skip processing due to status. jobId={}, status={}", jobId, j.getStatus()),
+                          () -> log.warn("job not found. jobId={}", jobId)
+                      );
             return;
         }
 
-        SummarizationJob job = repository.findById(jobId)
-                                         .orElseThrow();
+        //원문 조회
+        String inputText = repository.findById(jobId)
+                                     .map(SummarizationJob::getInputText)
+                                     .orElseThrow();
 
         try {
-            String summary = summarizer.summarize(job.getInputText());
-            String usedModel = summarizer.getModelName();
-            job.markSuccess(summary, usedModel);
+            String summary = summarizer.summarize(inputText);
+            int succeeded = transitionService.markSuccess(
+                jobId,
+                summary,
+                summarizer.getModelName(),
+                LocalDateTime.now()
+            );
+            log.info("job success. jobId={}, updated={}", jobId, succeeded);
 
-            log.info("job success. jobId={}", jobId);
         } catch (Exception e) {
             JobErrorCode errorCode = mapAiError(e);
             String msg = safeMessage(e);
 
-            job.markFailed(errorCode, msg, summarizer.getModelName());
-            log.error("job failed. jobId={}, errorCode={}, message={}", jobId, errorCode, msg, e);
+            int failed = transitionService.markFailed(
+                jobId,
+                errorCode,
+                msg,
+                summarizer.getModelName(),
+                LocalDateTime.now()
+            );
+            log.info("job failed. jobId={}, errorCode={}, updated={}", jobId, errorCode, failed);
 
             throw new AiProcessException(errorCode, msg, e);
         }
@@ -96,15 +94,20 @@ public class JobProcessor {
     }
 
     private boolean containsAny(String target, List<String> patterns) {
-        return patterns.stream().anyMatch(target::contains);
+        return patterns.stream()
+                       .anyMatch(target::contains);
     }
 
     private String safeMessage(Exception e) {
-        if (e.getMessage() == null || e.getMessage().isBlank()) {
-            return e.getClass().getSimpleName();
+        if (e.getMessage() == null || e.getMessage()
+                                       .isBlank()) {
+            return e.getClass()
+                    .getSimpleName();
         }
-        return e.getMessage().length() > 300
-            ? e.getMessage().substring(0, 300)
+        return e.getMessage()
+                .length() > 300
+            ? e.getMessage()
+               .substring(0, 300)
             : e.getMessage();
     }
 }
