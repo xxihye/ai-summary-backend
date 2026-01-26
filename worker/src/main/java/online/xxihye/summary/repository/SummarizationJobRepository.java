@@ -31,15 +31,15 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-    update SummarizationJob j
-       set j.status = :toStatus,
-           j.resultText = :resultText,
-           j.model = :model,
-           j.finishedAt = :finishedAt,
-           j.updatedAt = :updatedAt
-     where j.id = :id
-       and j.status = :fromStatus
-""")
+        update SummarizationJob j
+           set j.status = :toStatus,
+               j.resultText = :resultText,
+               j.model = :model,
+               j.finishedAt = :finishedAt,
+               j.updatedAt = :updatedAt
+         where j.id = :id
+           and j.status = :fromStatus
+    """)
     int markSuccessIfRunning(
         @Param("id") Long id,
         @Param("fromStatus") JobStatus fromStatus,
@@ -52,27 +52,25 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-    update SummarizationJob j
-       set j.status = :toStatus,
-           j.errorCode = :errorCode,
-           j.errorMessage = :errorMessage,
-           j.model = :model,
-           j.finishedAt = :finishedAt,
-           j.updatedAt = :updatedAt
-     where j.id = :id
-       and j.status in :fromStatuses
-""")
+        update SummarizationJob j
+           set j.status = :toStatus,
+               j.errorCode = :errorCode,
+               j.errorMessage = :errorMessage,
+               j.model = :model,
+               j.finishedAt = :finishedAt,
+               j.updatedAt = :updatedAt
+         where j.id = :id
+           and j.status in :fromStatuses
+    """)
     int markFailedIfPendingOrRunning(
         @Param("id") Long id,
-        @Param("fromStatuses") java.util.Collection<JobStatus> fromStatuses, // List.of(PENDING, RUNNING)
-        @Param("toStatus") JobStatus toStatus,                               // FAILED
+        @Param("fromStatuses") java.util.Collection<JobStatus> fromStatuses,
+        @Param("toStatus") JobStatus toStatus,
         @Param("errorCode") JobErrorCode errorCode,
         @Param("errorMessage") String errorMessage,
         @Param("model") String model,
         @Param("finishedAt") java.time.LocalDateTime finishedAt,
         @Param("updatedAt") java.time.LocalDateTime updatedAt
     );
-
-
 
 }

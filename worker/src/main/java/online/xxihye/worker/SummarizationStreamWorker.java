@@ -130,6 +130,7 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         Long jobId = Long.valueOf(jobIdObj.toString());
         int attempt = parseAttempt(record.getValue().get(ATTEMPT_KEY));
 
+        //최대 시도 이상시 실패처리
         if (attempt >= MAX_ATTEMPTS) {
             int updated = transitionService.markFailed(
                 jobId,
@@ -147,9 +148,8 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         try {
             jobProcessor.process(jobId);
             ack(record);
-
         } catch (AiProcessException e) {
-            //재시도 대상
+            //재시도 대상인 경우, ack 처리 후 queue에 삽입.
             if (isRetryable(e.getErrorCode())) {
                 ack(record);
                 retryPublisher.requeue(jobId, attempt + 1);
@@ -166,12 +166,14 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     }
 
     private void ack(MapRecord<String, Object, Object> record) {
-        redis.opsForStream()
-             .acknowledge(STREAM_KEY, GROUP, record.getId());
+        redis.opsForStream().acknowledge(STREAM_KEY, GROUP, record.getId());
     }
 
     private int parseAttempt(Object raw) {
-        if (raw == null) return 0;
+        if (raw == null) {
+            return 0;
+        }
+
         return Integer.parseInt(raw.toString());
     }
 

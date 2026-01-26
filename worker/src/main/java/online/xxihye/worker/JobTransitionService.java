@@ -18,14 +18,23 @@ public class JobTransitionService {
     @Transactional
     public int moveToRunning(Long jobId, LocalDateTime now) {
         return repository.moveToRunningIfPending(
-            jobId, JobStatus.PENDING, JobStatus.RUNNING, now, now
+            jobId,
+            JobStatus.PENDING,
+            JobStatus.RUNNING,
+            now,
+            now
         );
     }
 
     @Transactional
     public int markSuccess(Long jobId, String resultText, String model, LocalDateTime now) {
         return repository.markSuccessIfRunning(
-            jobId, JobStatus.RUNNING, JobStatus.SUCCESS, resultText, model, now, now
+            jobId,
+            JobStatus.RUNNING,
+            JobStatus.SUCCESS,
+            resultText, model,
+            now,
+            now
         );
     }
 
@@ -35,8 +44,11 @@ public class JobTransitionService {
             jobId,
             java.util.List.of(JobStatus.PENDING, JobStatus.RUNNING),
             JobStatus.FAILED,
-            code, msg, model,
-            now, now
+            code,
+            msg,
+            model,
+            now,
+            now
         );
     }
 }

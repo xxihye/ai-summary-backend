@@ -21,12 +21,13 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class JobProcessor {
 
+    private static final int MAX_LENGTH = 300;
+
     private final SummarizationJobRepository repository;
     private final JobTransitionService transitionService;
     private final Summarizer summarizer;
 
     public void process(Long jobId) {
-
         int running = transitionService.moveToRunning(jobId, LocalDateTime.now());
 
         if (running == 0) {
@@ -43,6 +44,7 @@ public class JobProcessor {
                                      .map(SummarizationJob::getInputText)
                                      .orElseThrow();
 
+        //LLM 모델 연동 후 결과 저장
         try {
             String summary = summarizer.summarize(inputText);
             int succeeded = transitionService.markSuccess(
@@ -76,14 +78,11 @@ public class JobProcessor {
 
         if (containsAny(message, AiErrorPatterns.RATE_LIMIT)) {
             return JobErrorCode.AI_RATE_LIMITED;
-        }
-        if (containsAny(message, AiErrorPatterns.TIMEOUT)) {
+        } else if (containsAny(message, AiErrorPatterns.TIMEOUT)) {
             return JobErrorCode.AI_TIMEOUT;
-        }
-        if (containsAny(message, AiErrorPatterns.UNAVAILABLE)) {
+        } else if (containsAny(message, AiErrorPatterns.UNAVAILABLE)) {
             return JobErrorCode.AI_UNAVAILABLE;
-        }
-        if (containsAny(message, AiErrorPatterns.BAD_REQUEST)) {
+        } else if (containsAny(message, AiErrorPatterns.BAD_REQUEST)) {
             return JobErrorCode.AI_BAD_REQUEST;
         }
         return JobErrorCode.UNKNOWN;
@@ -94,20 +93,14 @@ public class JobProcessor {
     }
 
     private boolean containsAny(String target, List<String> patterns) {
-        return patterns.stream()
-                       .anyMatch(target::contains);
+        return patterns.stream().anyMatch(target::contains);
     }
 
     private String safeMessage(Exception e) {
-        if (e.getMessage() == null || e.getMessage()
-                                       .isBlank()) {
-            return e.getClass()
-                    .getSimpleName();
+        if (e.getMessage() == null || e.getMessage().isBlank()) {
+            return e.getClass().getSimpleName();
         }
-        return e.getMessage()
-                .length() > 300
-            ? e.getMessage()
-               .substring(0, 300)
-            : e.getMessage();
+
+        return e.getMessage().length() > MAX_LENGTH ? e.getMessage().substring(0, MAX_LENGTH) : e.getMessage();
     }
 }
