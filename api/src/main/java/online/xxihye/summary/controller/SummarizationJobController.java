@@ -8,6 +8,7 @@ import online.xxihye.summary.dto.CreateJobRes;
 import online.xxihye.summary.dto.JobDetailRes;
 import online.xxihye.summary.dto.JobResultRes;
 import online.xxihye.summary.service.SummarizationJobService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,19 +25,19 @@ public class SummarizationJobController {
 
     @Operation(description = "요약 작업 생성")
     @PostMapping
-    public CreateJobRes create(@Valid @RequestBody CreateJobReq req) {
-        return service.createJob(req);
+    public ResponseEntity<CreateJobRes> create(@Valid @RequestBody CreateJobReq req) {
+        return ResponseEntity.ok(service.createJob(1L, req));
     }
 
     @Operation(description = "작업 상태 조회")
     @GetMapping("/{jobId}")
-    public JobDetailRes getJob(@PathVariable Long jobId) {
-        return service.getJob(jobId);
+    public ResponseEntity<JobDetailRes> getJob(@PathVariable Long jobId) {
+        return ResponseEntity.ok(service.getJob(jobId));
     }
 
     @Operation(description = "작업 결과 조회")
     @GetMapping("/{jobId}/result")
-    public JobResultRes getResult(@PathVariable Long jobId) {
-        return service.getResult(jobId);
+    public ResponseEntity<JobResultRes> getResult(@PathVariable Long jobId) {
+        return ResponseEntity.ok(service.getResult(jobId));
     }
 }

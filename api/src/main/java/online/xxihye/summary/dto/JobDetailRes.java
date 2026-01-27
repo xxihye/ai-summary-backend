@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record JobDetailRes(
     Long jobId,
     JobStatus status,
+    String inputText,
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     LocalDateTime createdAt,
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
@@ -17,14 +18,15 @@ public record JobDetailRes(
     LocalDateTime finishedAt,
     boolean hasResult
 ) {
-    public static JobDetailRes from(SummarizationJob job){
+    public static JobDetailRes from(SummarizationJob job, String inputText) {
         return new JobDetailRes(
             job.getId(),
             job.getStatus(),
+            inputText,
             job.getCreatedAt(),
             job.getStartedAt(),
             job.getFinishedAt(),
-            job.getResultText() != null && !job.getResultText().isBlank()
+            !(job.getResultId() == null)
         );
     }
 }

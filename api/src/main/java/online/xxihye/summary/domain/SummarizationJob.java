@@ -20,23 +20,18 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Entity
 @Table(name = "summarization_jobs")
-@DynamicUpdate
 public class SummarizationJob {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name="user_id", nullable=false)
-    private Long userId;
+    @Column(name="user_no", nullable=false)
+    private Long userNo;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable=false, length=20)
     private JobStatus status;
-
-    @Lob
-    @Column(name = "input_text", columnDefinition = "TEXT", nullable = false)
-    private String inputText;
 
     @Column(name="input_hash", nullable=false, length=64)
     private String inputHash;
@@ -53,9 +48,8 @@ public class SummarizationJob {
     @Column(name="cache_hit", nullable=false)
     private Boolean cacheHit = false;
 
-    @Lob
-    @Column(name="result_text")
-    private String resultText;
+    @Column(name="result_id")
+    private Long resultId;
 
     @Enumerated(EnumType.STRING)
     @Column(name="error_code", length=50)
@@ -80,22 +74,17 @@ public class SummarizationJob {
 
     protected SummarizationJob() {}
 
-    public SummarizationJob(Long userId, String text, String inputHash, int inputTextLen) {
-        this.userId = userId;
-        this.inputText = text;
+    public SummarizationJob(Long userNo, String inputHash, int inputTextLen, String promptVersion) {
+        this.userNo = userNo;
         this.status = JobStatus.PENDING;
         this.inputHash = inputHash;
         this.inputTextLen = inputTextLen;
-        this.promptVersion = "v1";
+        this.promptVersion = promptVersion;
         this.cacheHit = false;
     }
 
     public Long getId() {
         return id;
-    }
-
-    public String getInputText() {
-        return inputText;
     }
 
     public JobStatus getStatus() {
@@ -114,25 +103,23 @@ public class SummarizationJob {
         return createdAt;
     }
 
-    public String getResultText() {
-        return resultText;
+    public Long getResultId(){
+        return this.resultId;
     }
 
-    public void markRunning() {
-        this.status = JobStatus.RUNNING;
-        this.startedAt = LocalDateTime.now();
+    public String getModel(){
+        return this.model;
     }
 
-    public void markSuccess(String resultText) {
-        this.status = JobStatus.SUCCESS;
-        this.resultText = resultText;
-        this.finishedAt = LocalDateTime.now();
+    public String getPromptVersion(){
+        return this.promptVersion;
     }
 
-    public void markFailed(JobErrorCode errorCode, String errorMessage) {
-        this.status = JobStatus.FAILED;
-        this.errorCode = errorCode;
-        this.errorMessage = errorMessage;
-        this.finishedAt = LocalDateTime.now();
+    public Boolean getCacheHit() {
+        return cacheHit;
+    }
+
+    public static SummarizationJob createPending(Long userNo, String inputHash, int inputTextLen, String promptVersion){
+        return new SummarizationJob(userNo, inputHash, inputTextLen, promptVersion);
     }
 }

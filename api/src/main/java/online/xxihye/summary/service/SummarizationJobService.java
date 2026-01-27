@@ -4,12 +4,16 @@ import lombok.RequiredArgsConstructor;
 import online.xxihye.common.util.HashUtil;
 import online.xxihye.infra.redis.JobQueueClient;
 import online.xxihye.summary.domain.JobStatus;
+import online.xxihye.summary.domain.SummarizationInput;
 import online.xxihye.summary.domain.SummarizationJob;
+import online.xxihye.summary.domain.Summary;
 import online.xxihye.summary.dto.CreateJobReq;
 import online.xxihye.summary.dto.CreateJobRes;
 import online.xxihye.summary.dto.JobDetailRes;
 import online.xxihye.summary.dto.JobResultRes;
+import online.xxihye.summary.repository.SummarizationInputRepository;
 import online.xxihye.summary.repository.SummarizationJobRepository;
+import online.xxihye.summary.repository.SummaryRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,45 +23,65 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SummarizationJobService {
 
-    private final SummarizationJobRepository repository;
+    private static final String PROMPT_VERSION = "v1";
+
+    private final SummarizationJobRepository jobRepository;
+    private final SummarizationInputRepository inputRepository;
+    private final SummaryRepository summaryRepository;
     private final JobQueueClient queue;
 
+    //job 생성
     @Transactional
-    public CreateJobRes createJob(CreateJobReq req) {
-        //todo : 지금은 하드코딩
-        Long userId = 1L;
-        String text = req.getText().trim();
-        String inputHash = HashUtil.sha256(text);
+    public CreateJobRes createJob(Long userNo, CreateJobReq req) {
+        String inputText = req.getText()
+                              .trim();
+        String inputHash = HashUtil.sha256(inputText);
+        int inputLen = inputText.length();
 
-        SummarizationJob job = new SummarizationJob(userId, text, inputHash, text.length());
-        repository.save(job);
+        //job 생성
+        SummarizationJob job = SummarizationJob.createPending(
+            userNo,
+            inputHash,
+            inputLen,
+            PROMPT_VERSION
+        );
+        SummarizationJob savedJob = jobRepository.save(job);
 
+        // input 저장
+        inputRepository.save(new SummarizationInput(savedJob.getId(), inputText));
+
+        //레디스에 저장
         queue.enqueue(job.getId());
 
-        return new CreateJobRes(job.getId(), job.getStatus());
+        return new CreateJobRes(job.getId(), JobStatus.PENDING);
     }
 
+    //결과 조회
     public JobDetailRes getJob(Long jobId) {
-        SummarizationJob job = repository.findById(jobId)
-                                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
+        SummarizationJob job = jobRepository.findById(jobId)
+                                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
 
-        return JobDetailRes.from(job);
+        String input = inputRepository.findByJobId(jobId)
+                                      .map(SummarizationInput::getInputText)
+                                      .orElse(null);
+
+        return JobDetailRes.from(job, input);
     }
 
     public JobResultRes getResult(Long jobId) {
-        SummarizationJob job = repository.findById(jobId)
-                                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
+        SummarizationJob job = jobRepository.findById(jobId)
+                                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
 
         //성공한 경우가 아닌 경우, 예외 처리
         if (job.getStatus() != JobStatus.SUCCESS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "job is not finished");
         }
 
-        //요약 결과 빈값인 경우, 예외처리
-        if (job.getResultText() == null || job.getResultText().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "result is empty");
-        }
+        String result = summaryRepository.findById(job.getResultId())
+                                         .map(Summary::getSummaryText)
+                                         .orElse(null);
 
-        return JobResultRes.of(job.getId(), job.getResultText());
+        return JobResultRes.of(jobId, result, job.getModel(), job.getPromptVersion(), job.getCacheHit());
     }
+
 }
