@@ -1,6 +1,9 @@
 package online.xxihye.summary.service;
 
 import lombok.RequiredArgsConstructor;
+import online.xxihye.common.exception.ConflictException;
+import online.xxihye.common.exception.ErrorCode;
+import online.xxihye.common.exception.NotFoundException;
 import online.xxihye.common.util.HashUtil;
 import online.xxihye.infra.redis.JobQueueClient;
 import online.xxihye.summary.domain.JobStatus;
@@ -33,8 +36,7 @@ public class SummarizationJobService {
     //job 생성
     @Transactional
     public CreateJobRes createJob(Long userNo, CreateJobReq req) {
-        String inputText = req.getText()
-                              .trim();
+        String inputText = req.getText().trim();
         String inputHash = HashUtil.sha256(inputText);
         int inputLen = inputText.length();
 
@@ -57,9 +59,9 @@ public class SummarizationJobService {
     }
 
     //결과 조회
-    public JobDetailRes getJob(Long jobId) {
-        SummarizationJob job = jobRepository.findById(jobId)
-                                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
+    public JobDetailRes getJob(Long userNo, Long jobId) {
+        SummarizationJob job = jobRepository.findByIdAndUserNo(jobId, userNo)
+                                            .orElseThrow(() -> new NotFoundException(ErrorCode.JOB_NOT_FOUND));
 
         String input = inputRepository.findByJobId(jobId)
                                       .map(SummarizationInput::getInputText)
@@ -68,13 +70,13 @@ public class SummarizationJobService {
         return JobDetailRes.from(job, input);
     }
 
-    public JobResultRes getResult(Long jobId) {
-        SummarizationJob job = jobRepository.findById(jobId)
-                                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "job not found"));
+    public JobResultRes getResult(Long userNo, Long jobId) {
+        SummarizationJob job = jobRepository.findByIdAndUserNo(jobId, userNo)
+                                            .orElseThrow(() -> new NotFoundException(ErrorCode.JOB_NOT_FOUND));
 
         //성공한 경우가 아닌 경우, 예외 처리
         if (job.getStatus() != JobStatus.SUCCESS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "job is not finished");
+            throw new ConflictException(ErrorCode.JOB_NOT_COMPLETED);
         }
 
         String result = summaryRepository.findById(job.getResultId())
