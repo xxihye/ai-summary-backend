@@ -48,4 +48,8 @@ public class Summary {
     public String getSummaryText() {
         return summaryText;
     }
+
+    public Long getId(){
+        return id;
+    }
 }

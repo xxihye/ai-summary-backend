@@ -8,9 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -26,61 +24,65 @@ public class SummarizationJob {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name="user_no", nullable=false)
+    @Column(name = "user_no", nullable = false)
     private Long userNo;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable=false, length=20)
+    @Column(nullable = false, length = 20)
     private JobStatus status;
 
-    @Column(name="input_hash", nullable=false, length=64)
+    @Column(name = "input_hash", nullable = false, length = 64)
     private String inputHash;
 
-    @Column(name="input_text_len", nullable=false)
+    @Column(name = "input_text_len", nullable = false)
     private Integer inputTextLen;
 
-    @Column(length=50)
+    @Column(length = 50)
     private String model;
 
-    @Column(name="prompt_version", nullable=false, length=20)
+    @Column(name = "prompt_version", nullable = false, length = 20)
     private String promptVersion = "v1";
 
-    @Column(name="cache_hit", nullable=false)
+    @Column(name = "cache_hit", nullable = false)
     private Boolean cacheHit = false;
 
-    @Column(name="result_id")
+    @Column(name = "result_id")
     private Long resultId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name="error_code", length=50)
+    @Column(name = "error_code", length = 50)
     private JobErrorCode errorCode;
 
-    @Column(name="error_message", length=500)
+    @Column(name = "error_message", length = 500)
     private String errorMessage;
 
-    @Column(name="started_at")
+    @Column(name = "started_at")
     private LocalDateTime startedAt;
 
-    @Column(name="finished_at")
+    @Column(name = "finished_at")
     private LocalDateTime finishedAt;
 
     @CreatedDate
-    @Column(name="created_at", nullable=false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(name="updated_at", nullable=false)
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    protected SummarizationJob() {}
+    protected SummarizationJob() {
+    }
 
-    public SummarizationJob(Long userNo, String inputHash, int inputTextLen, String promptVersion) {
+    public SummarizationJob(Long userNo, JobStatus status, String inputHash, int inputTextLen, String promptVersion, boolean cacheHit, Long resultId, LocalDateTime startedAt, LocalDateTime finishedAt) {
         this.userNo = userNo;
-        this.status = JobStatus.PENDING;
+        this.status = status;
         this.inputHash = inputHash;
         this.inputTextLen = inputTextLen;
         this.promptVersion = promptVersion;
-        this.cacheHit = false;
+        this.cacheHit = cacheHit;
+        this.resultId = resultId;
+        this.startedAt = startedAt;
+        this.finishedAt = finishedAt;
     }
 
     public Long getId() {
@@ -103,15 +105,15 @@ public class SummarizationJob {
         return createdAt;
     }
 
-    public Long getResultId(){
+    public Long getResultId() {
         return this.resultId;
     }
 
-    public String getModel(){
+    public String getModel() {
         return this.model;
     }
 
-    public String getPromptVersion(){
+    public String getPromptVersion() {
         return this.promptVersion;
     }
 
@@ -119,7 +121,11 @@ public class SummarizationJob {
         return cacheHit;
     }
 
-    public static SummarizationJob createPending(Long userNo, String inputHash, int inputTextLen, String promptVersion){
-        return new SummarizationJob(userNo, inputHash, inputTextLen, promptVersion);
+    public static SummarizationJob createPending(Long userNo, String inputHash, int inputTextLen, String promptVersion) {
+        return new SummarizationJob(userNo, JobStatus.PENDING, inputHash, inputTextLen, promptVersion, false, null, null, null);
+    }
+
+    public static SummarizationJob createSuccessFromCache(Long userNo, String inputHash, int inputTextLen, String promptVersion, Long resultId, LocalDateTime now) {
+        return new SummarizationJob(userNo, JobStatus.SUCCESS, inputHash, inputTextLen, promptVersion, true, resultId, now, now);
     }
 }
