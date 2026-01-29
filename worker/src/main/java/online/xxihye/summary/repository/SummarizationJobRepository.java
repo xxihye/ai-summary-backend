@@ -33,7 +33,7 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
     @Query("""
         update SummarizationJob j
            set j.status = :toStatus,
-               j.resultText = :resultText,
+               j.resultId = :resultId,
                j.model = :model,
                j.finishedAt = :finishedAt,
                j.updatedAt = :updatedAt
@@ -44,7 +44,7 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
         @Param("id") Long id,
         @Param("fromStatus") JobStatus fromStatus,
         @Param("toStatus") JobStatus toStatus,
-        @Param("resultText") String resultText,
+        @Param("resultId") Long resultId,
         @Param("model") String model,
         @Param("finishedAt") LocalDateTime finishedAt,
         @Param("updatedAt") LocalDateTime updatedAt

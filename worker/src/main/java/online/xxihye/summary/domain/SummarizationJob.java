@@ -20,16 +20,12 @@ public class SummarizationJob {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name="user_id", nullable=false)
-    private Long userId;
+    @Column(name="user_no", nullable=false)
+    private Long userNo;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable=false, length=20)
     private JobStatus status;
-
-    @Lob
-    @Column(name = "input_text", columnDefinition = "TEXT", nullable = false)
-    private String inputText;
 
     @Column(name="input_hash", nullable=false, length=64)
     private String inputHash;
@@ -46,9 +42,8 @@ public class SummarizationJob {
     @Column(name="cache_hit", nullable=false)
     private Boolean cacheHit;
 
-    @Lob
-    @Column(name="result_text")
-    private String resultText;
+    @Column(name="result_id")
+    private Long resultId;
 
     @Enumerated(EnumType.STRING)
     @Column(name="error_code", length=50)
@@ -71,36 +66,9 @@ public class SummarizationJob {
 
     protected SummarizationJob() {}
 
-    public Long getId() { return id; }
     public JobStatus getStatus() { return status; }
 
-    public String getInputText() {
-        return inputText;
-    }
-
-    public Integer getInputTextLen() { return inputTextLen; }
-
-    public void markRunning(LocalDateTime now) {
-        this.status = JobStatus.RUNNING;
-        this.startedAt = now;
-        this.updatedAt = now;
-    }
-
-    public void markSuccess(String resultText, String model) {
-        this.status = JobStatus.SUCCESS;
-        this.model = model;
-        this.resultText = resultText;
-        this.finishedAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public void markFailed(JobErrorCode errorCode, String errorMessage, String model) {
-        System.out.println("도메인까지 접근");
-        this.status = JobStatus.FAILED;
-        this.model = model;
-        this.errorCode = errorCode;
-        this.errorMessage = errorMessage;
-        this.finishedAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+    public String getInputHash(){
+        return inputHash;
     }
 }

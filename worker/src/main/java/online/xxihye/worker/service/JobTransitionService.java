@@ -1,4 +1,4 @@
-package online.xxihye.worker;
+package online.xxihye.worker.service;
 
 import lombok.RequiredArgsConstructor;
 import online.xxihye.summary.domain.JobErrorCode;
@@ -27,12 +27,13 @@ public class JobTransitionService {
     }
 
     @Transactional
-    public int markSuccess(Long jobId, String resultText, String model, LocalDateTime now) {
+    public int markSuccess(Long jobId, Long resultId, String model, LocalDateTime now) {
         return repository.markSuccessIfRunning(
             jobId,
             JobStatus.RUNNING,
             JobStatus.SUCCESS,
-            resultText, model,
+            resultId,
+            model,
             now,
             now
         );

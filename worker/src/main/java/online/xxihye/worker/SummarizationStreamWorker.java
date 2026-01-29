@@ -3,8 +3,9 @@ package online.xxihye.worker;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import online.xxihye.summary.domain.JobErrorCode;
-import online.xxihye.summary.repository.SummarizationJobRepository;
 import online.xxihye.worker.exception.AiProcessException;
+import online.xxihye.worker.exception.WorkerException;
+import online.xxihye.worker.service.JobTransitionService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -62,9 +63,7 @@ public class SummarizationStreamWorker implements CommandLineRunner {
     public void ensureGroup() {
         try {
             redis.opsForStream()
-                 //todo: 커밋전 코드 바꾸기
-                 .createGroup(STREAM_KEY, ReadOffset.from("0-0"), GROUP);
-//                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
+                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
             log.info("stream group created. stream={}, group={}", STREAM_KEY, GROUP);
         } catch (Exception e) {
             if (isBusyGroup(e)) {
@@ -148,7 +147,7 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         try {
             jobProcessor.process(jobId);
             ack(record);
-        } catch (AiProcessException e) {
+        } catch (WorkerException e) {
             //재시도 대상인 경우, ack 처리 후 queue에 삽입.
             if (isRetryable(e.getErrorCode())) {
                 ack(record);
@@ -179,8 +178,10 @@ public class SummarizationStreamWorker implements CommandLineRunner {
 
     private boolean isRetryable(JobErrorCode code) {
         return code == JobErrorCode.AI_RATE_LIMITED
-            || code == JobErrorCode.AI_TIMEOUT
-            || code == JobErrorCode.AI_UNAVAILABLE;
+            || code == JobErrorCode.AI_INTERNAL_ERROR
+            || code == JobErrorCode.AI_SERVICE_UNAVAILABLE
+            || code == JobErrorCode.AI_NETWORK_ERROR
+            || code == JobErrorCode.AI_TIMEOUT;
     }
 
     private void loopBackoff() {
