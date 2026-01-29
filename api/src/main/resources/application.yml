@@ -28,3 +28,5 @@ jwt:
   secret: ${JWT_SECRET}
   access-expiration: 3600 #sec
 
+gemini:
+  model: gemini-2.5-flash
