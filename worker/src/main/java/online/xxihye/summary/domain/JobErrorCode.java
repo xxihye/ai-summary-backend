@@ -1,20 +1,30 @@
 package online.xxihye.summary.domain;
 
 public enum JobErrorCode {
-    INVALID_PAYLOAD,
-    DB_FAILED,
-    NOT_FOUND_INPUT,
-    INVALID_INPUT_TEXT,
-    UNKNOWN,
-    RETRY_EXCEEDED,
-    AI_BAD_REQUEST,          // 400
-    AI_UNAUTHORIZED,         // 401
-    AI_PERMISSION_DENIED,    // 403
-    AI_NOT_FOUND,            // 404
-    AI_RATE_LIMITED,         // 429
-    AI_INTERNAL_ERROR,       // 500
-    AI_SERVICE_UNAVAILABLE,  // 503
-    AI_TIMEOUT,              // 504
-    AI_UNKNOWN_ERROR,        // 그 외
-    AI_NETWORK_ERROR         // GenAiIOException 등
+    INVALID_PAYLOAD(false),
+    DB_FAILED(false),
+    NOT_FOUND_INPUT(false),
+    INVALID_INPUT_TEXT(false),
+    UNKNOWN(false),
+    RETRY_EXCEEDED(false),
+    AI_BAD_REQUEST(false),
+    AI_UNAUTHORIZED(false),
+    AI_PERMISSION_DENIED(false),
+    AI_NOT_FOUND(false),
+    AI_RATE_LIMITED(true),
+    AI_INTERNAL_ERROR(true),
+    AI_SERVICE_UNAVAILABLE(true),
+    AI_TIMEOUT(true),
+    AI_UNKNOWN_ERROR(false),
+    AI_NETWORK_ERROR(true);
+
+    private final boolean retryable;
+
+    JobErrorCode(boolean retryable) {
+        this.retryable = retryable;
+    }
+
+    public boolean isRetryable(){
+        return retryable;
+    }
 }

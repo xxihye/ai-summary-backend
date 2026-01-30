@@ -10,7 +10,6 @@ import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.summarizer.Summarizer;
 import online.xxihye.worker.exception.AiProcessException;
 import online.xxihye.worker.exception.InvalidInputException;
-import org.apache.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -33,7 +32,6 @@ public class GeminiSummarizer implements Summarizer {
         if (!StringUtils.hasText(text)) {
             throw new InvalidInputException();
         }
-
 
         try{
             Content content = Content.fromParts(
@@ -77,8 +75,4 @@ public class GeminiSummarizer implements Summarizer {
             default -> JobErrorCode.AI_UNKNOWN_ERROR;
         };
     }
-
-
-
-
 }
