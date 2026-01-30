@@ -1,9 +1,11 @@
 package online.xxihye.user.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import online.xxihye.common.exception.DailyQuotaExceededException;
 import online.xxihye.common.exception.ErrorCode;
 import online.xxihye.infra.redis.UserQuotaClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -13,9 +15,11 @@ import java.time.ZonedDateTime;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DailyQuotaService {
 
-    private static final int DAILY_LIMIT = 10;
+    @Value("${quota.daily-limit}")
+    private int dailyLimit;
     private static final ZoneId ZONE_ID = ZoneId.of("Asia/Seoul");
 
     private final UserQuotaClient quotaClient;
@@ -27,7 +31,8 @@ public class DailyQuotaService {
         long count = quotaClient.increment(key);
         quotaClient.expireIfFirstHit(key, count, ttlUntilEndOfDay());
 
-        if (count > DAILY_LIMIT) {
+        if (count > dailyLimit) {
+            log.info("quota consumed. userNo={}, count={}", userNo, count);
             throw new DailyQuotaExceededException(ErrorCode.DAILY_QUOTA_EXCEEDED);
         }
     }

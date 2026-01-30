@@ -42,8 +42,7 @@ public class SummarizationJobService {
     public CreateJobRes createJob(Long userNo, CreateJobReq req) {
         quotaService.consumeOrThrow(userNo);
 
-        String inputText = req.getText()
-                              .trim();
+        String inputText = req.getText().trim();
         String inputHash = HashUtil.sha256(inputText);
         int inputTextLen = inputText.length();
         LocalDateTime now = LocalDateTime.now();

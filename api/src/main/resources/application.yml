@@ -30,3 +30,6 @@ jwt:
 
 gemini:
   model: gemini-2.5-flash
+
+quota:
+  daily-limit: 10
