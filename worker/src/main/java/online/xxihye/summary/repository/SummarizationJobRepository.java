@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface SummarizationJobRepository extends JpaRepository<SummarizationJob, Long> {
 
@@ -16,20 +17,19 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
     @Query("""
         update SummarizationJob j
            set j.status = :toStatus,
-               j.startedAt = :startedAt,
-               j.updatedAt = :updatedAt
+               j.startedAt = coalesce(j.startedAt, :now),
+               j.updatedAt = :now
          where j.id = :id
-           and j.status = :fromStatus
+           and j.status in :fromStatuses 
     """)
-    int moveToRunningIfPending(
+    int moveToRunning(
         @Param("id") Long id,
-        @Param("fromStatus") JobStatus fromStatus,
+        @Param("fromStatuses") List<JobStatus> fromStatuses,
         @Param("toStatus") JobStatus toStatus,
-        @Param("startedAt") LocalDateTime startedAt,
-        @Param("updatedAt") LocalDateTime updatedAt
+        @Param("now") LocalDateTime now
     );
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying
     @Query("""
         update SummarizationJob j
            set j.status = :toStatus,
@@ -50,7 +50,7 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
         @Param("updatedAt") LocalDateTime updatedAt
     );
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying
     @Query("""
         update SummarizationJob j
            set j.status = :toStatus,
@@ -64,13 +64,32 @@ public interface SummarizationJobRepository extends JpaRepository<SummarizationJ
     """)
     int markFailedIfPendingOrRunning(
         @Param("id") Long id,
-        @Param("fromStatuses") java.util.Collection<JobStatus> fromStatuses,
+        @Param("fromStatuses") List<JobStatus> fromStatuses,
         @Param("toStatus") JobStatus toStatus,
         @Param("errorCode") JobErrorCode errorCode,
         @Param("errorMessage") String errorMessage,
         @Param("model") String model,
-        @Param("finishedAt") java.time.LocalDateTime finishedAt,
-        @Param("updatedAt") java.time.LocalDateTime updatedAt
+        @Param("finishedAt") LocalDateTime finishedAt,
+        @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    @Modifying
+    @Query("""
+        update SummarizationJob j
+           set j.status = :toStatus,
+               j.errorCode = :errorCode,
+               j.errorMessage = :errorMessage,
+               j.updatedAt = :now
+         where j.id = :jobId
+           and j.status = :fromStatus
+    """)
+    int markRetrying(
+        @Param("jobId") Long jobId,
+        @Param("fromStatus") JobStatus fromStatus,
+        @Param("toStatus") JobStatus toStatus,
+        @Param("errorCode") JobErrorCode errorCode,
+        @Param("errorMessage") String errorMessage,
+        @Param("now") LocalDateTime now
     );
 
 }

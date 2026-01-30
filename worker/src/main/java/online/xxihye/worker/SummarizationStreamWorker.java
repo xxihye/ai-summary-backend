@@ -149,9 +149,10 @@ public class SummarizationStreamWorker implements CommandLineRunner {
             ack(record);
         } catch (WorkerException e) {
             //재시도 대상인 경우, ack 처리 후 queue에 삽입.
-            if (isRetryable(e.getErrorCode())) {
+            if (e.getErrorCode().isRetryable()) {
                 ack(record);
-                retryPublisher.requeue(jobId, attempt + 1);
+                retryPublisher.requeue(jobId, ++attempt);
+                log.info("requeue job id : {}, attempt : {}", jobId, attempt);
                 return;
             }
 
@@ -174,14 +175,6 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         }
 
         return Integer.parseInt(raw.toString());
-    }
-
-    private boolean isRetryable(JobErrorCode code) {
-        return code == JobErrorCode.AI_RATE_LIMITED
-            || code == JobErrorCode.AI_INTERNAL_ERROR
-            || code == JobErrorCode.AI_SERVICE_UNAVAILABLE
-            || code == JobErrorCode.AI_NETWORK_ERROR
-            || code == JobErrorCode.AI_TIMEOUT;
     }
 
     private void loopBackoff() {

@@ -4,10 +4,13 @@ import lombok.RequiredArgsConstructor;
 import online.xxihye.summary.domain.JobErrorCode;
 import online.xxihye.summary.domain.JobStatus;
 import online.xxihye.summary.repository.SummarizationJobRepository;
+import org.springframework.cglib.core.Local;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -17,11 +20,10 @@ public class JobTransitionService {
 
     @Transactional
     public int moveToRunning(Long jobId, LocalDateTime now) {
-        return repository.moveToRunningIfPending(
+        return repository.moveToRunning(
             jobId,
-            JobStatus.PENDING,
+            List.of(JobStatus.PENDING, JobStatus.RETRYING),
             JobStatus.RUNNING,
-            now,
             now
         );
     }
@@ -43,12 +45,24 @@ public class JobTransitionService {
     public int markFailed(Long jobId, JobErrorCode code, String msg, String model, LocalDateTime now) {
         return repository.markFailedIfPendingOrRunning(
             jobId,
-            java.util.List.of(JobStatus.PENDING, JobStatus.RUNNING),
+            List.of(JobStatus.PENDING, JobStatus.RUNNING),
             JobStatus.FAILED,
             code,
             msg,
             model,
             now,
+            now
+        );
+    }
+
+    @Transactional
+    public int markRetrying(Long jobId, JobErrorCode errorCode, String msg, LocalDateTime now){
+        return repository.markRetrying(
+            jobId,
+            JobStatus.RUNNING,
+            JobStatus.RETRYING,
+            errorCode,
+            msg,
             now
         );
     }

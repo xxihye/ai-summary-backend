@@ -75,15 +75,26 @@ public class JobProcessor {
             log.info("job success. jobId={}, updated={}", jobId, succeeded);
 
         } catch (WorkerException e) {
-            transitionService.markFailed(
-                jobId,
-                e.getErrorCode(),
-                safeMessage(e),
-                summarizer.getModelName(),
-                LocalDateTime.now()
-            );
+            if (e.getErrorCode().isRetryable()){
+                transitionService.markRetrying(
+                    jobId,
+                    e.getErrorCode(),
+                    safeMessage(e),
+                    LocalDateTime.now()
+                );
+                log.info("job have to retry. jobId={}, errorCode={}, updated={}", jobId, e.getErrorCode());
+            }else{
+                transitionService.markFailed(
+                    jobId,
+                    e.getErrorCode(),
+                    safeMessage(e),
+                    summarizer.getModelName(),
+                    LocalDateTime.now()
+                );
 
-            log.info("job failed. jobId={}, errorCode={}, updated={}", jobId, e.getErrorCode());
+                log.info("job failed. jobId={}, errorCode={}, updated={}", jobId, e.getErrorCode());
+            }
+
             throw e;
         } catch (Exception e) {
             int failed = transitionService.markFailed(
