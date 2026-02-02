@@ -2,11 +2,10 @@ package online.xxihye.summary.service;
 
 import lombok.RequiredArgsConstructor;
 import online.xxihye.common.exception.ConflictException;
-import online.xxihye.common.exception.DailyQuotaExceededException;
 import online.xxihye.common.exception.ErrorCode;
 import online.xxihye.common.exception.NotFoundException;
 import online.xxihye.common.util.HashUtil;
-import online.xxihye.infra.redis.JobQueueClient;
+import online.xxihye.infra.redis.JobStreamPublisher;
 import online.xxihye.summary.domain.JobStatus;
 import online.xxihye.summary.domain.SummarizationInput;
 import online.xxihye.summary.domain.SummarizationJob;
@@ -35,7 +34,7 @@ public class SummarizationJobService {
     private final SummarizationJobRepository jobRepository;
     private final SummarizationInputRepository inputRepository;
     private final SummaryRepository summaryRepository;
-    private final JobQueueClient queue;
+    private final JobStreamPublisher queue;
 
     //job 생성
     @Transactional
@@ -74,7 +73,7 @@ public class SummarizationJobService {
         SummarizationJob saved = jobRepository.save(pending);
 
         inputRepository.save(new SummarizationInput(saved.getId(), inputText));
-        queue.enqueue(saved.getId());
+        queue.publish(saved.getId());
 
         return new CreateJobRes(saved.getId(), saved.getStatus());
     }
