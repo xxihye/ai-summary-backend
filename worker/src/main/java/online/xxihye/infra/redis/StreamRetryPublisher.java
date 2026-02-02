@@ -1,4 +1,4 @@
-package online.xxihye.worker;
+package online.xxihye.infra.redis;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,9 +25,7 @@ public class StreamRetryPublisher {
         this.redis = redis;
     }
 
-    public void requeue(Long jobId, int nextAttempt) {
-        backoff(nextAttempt);
-
+    public void publish(Long jobId, int nextAttempt) {
         redis.opsForStream().add(
             streamKey,
             Map.of(
@@ -35,13 +33,5 @@ public class StreamRetryPublisher {
                 attemptKey, String.valueOf(nextAttempt)
             )
         );
-    }
-
-    private void backoff(int attempt) {
-        try {
-            Thread.sleep(200L * attempt);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 }

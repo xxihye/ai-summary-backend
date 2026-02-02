@@ -2,19 +2,15 @@ package online.xxihye.worker;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import online.xxihye.infra.redis.RedisStreamClient;
+import online.xxihye.infra.redis.StreamRetryPublisher;
 import online.xxihye.summary.domain.JobErrorCode;
-import online.xxihye.worker.exception.AiProcessException;
 import online.xxihye.worker.exception.WorkerException;
 import online.xxihye.worker.service.JobTransitionService;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.ReadOffset;
-import org.springframework.data.redis.connection.stream.StreamOffset;
-import org.springframework.data.redis.connection.stream.StreamReadOptions;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -42,55 +38,38 @@ public class SummarizationStreamWorker implements CommandLineRunner {
 
     private static final int MAX_ATTEMPTS = 3;
 
-    private final RedisTemplate<String, String> redis;
     private final JobProcessor jobProcessor;
     private final JobTransitionService transitionService;
+    private final RedisStreamClient redisStreamClient;
     private final StreamRetryPublisher retryPublisher;
 
 
-    public SummarizationStreamWorker(@Qualifier("redisTemplate") RedisTemplate<String, String> redis,
-                                     JobProcessor jobProcessor,
-                                     JobTransitionService transitionService1,
+    public SummarizationStreamWorker(JobProcessor jobProcessor,
+                                     JobTransitionService transitionService1, RedisStreamClient redisStreamClient,
                                      StreamRetryPublisher retryPublisher
     ) {
-        this.redis = redis;
         this.jobProcessor = jobProcessor;
         this.transitionService = transitionService1;
+        this.redisStreamClient = redisStreamClient;
         this.retryPublisher = retryPublisher;
     }
 
     @PostConstruct
-    public void ensureGroup() {
-        try {
-            redis.opsForStream()
-                 .createGroup(STREAM_KEY, ReadOffset.latest(), GROUP);
-            log.info("stream group created. stream={}, group={}", STREAM_KEY, GROUP);
-        } catch (Exception e) {
-            if (isBusyGroup(e)) {
-                log.info("stream group already exists. stream={}, group={}", STREAM_KEY, GROUP);
-                return;
-            }
-            log.warn("failed to create stream group. stream={}, group={}", STREAM_KEY, GROUP, e);
-        }
-    }
-
-    //존재하는 그룹으로 인한 Exception 인지 확인
-    private boolean isBusyGroup(Throwable e) {
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof io.lettuce.core.RedisBusyException) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
+    public void init() {
+        redisStreamClient.ensureGroup(STREAM_KEY, GROUP);
     }
 
     @Override
     public void run(String... args) {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                List<MapRecord<String, Object, Object>> records = readOnce();
+                List<MapRecord<String, Object, Object>> records = redisStreamClient.readOnce(
+                    STREAM_KEY,
+                    GROUP,
+                    CONSUMER,
+                    10,
+                    Duration.ofSeconds(2)
+                );
 
                 for (MapRecord<String, Object, Object> record : records) {
                     handleRecord(record);
@@ -102,27 +81,22 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         }
     }
 
-    //Stream 메시지 읽기
-    private List<MapRecord<String, Object, Object>> readOnce() {
-        StreamReadOptions options = StreamReadOptions.empty()
-                                                     .count(10)
-                                                     .block(Duration.ofSeconds(2));
-
-        Consumer consumer = Consumer.from(GROUP, CONSUMER);
-
-        return redis.opsForStream()
-                    .read(
-                        consumer,
-                        options,
-                        StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
-                    );
+    private void loopBackoff() {
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException ie) {
+            Thread.currentThread()
+                  .interrupt(); // interrupt 상태 복구
+        }
     }
 
     //메시지 처리
     private void handleRecord(MapRecord<String, Object, Object> record) {
         Object jobIdObj = record.getValue().get(JOB_KEY);
+        RecordId recordId = record.getId();
+
         if (jobIdObj == null) {
-            ack(record);
+            redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
             return;
         }
 
@@ -140,33 +114,30 @@ public class SummarizationStreamWorker implements CommandLineRunner {
             );
 
             log.info("job failed. jobId={}, errorCode={}, updated={}", jobId, JobErrorCode.RETRY_EXCEEDED, updated);
-            ack(record);
+            redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
             return;
         }
 
         try {
             jobProcessor.process(jobId);
-            ack(record);
+            redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
         } catch (WorkerException e) {
             //재시도 대상인 경우, ack 처리 후 queue에 삽입.
             if (e.getErrorCode().isRetryable()) {
-                ack(record);
-                retryPublisher.requeue(jobId, ++attempt);
+                redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
+                backoff(++attempt);
+                retryPublisher.publish(jobId, attempt);
                 log.info("requeue job id : {}, attempt : {}", jobId, attempt);
                 return;
             }
 
             //재시도 대상 아님.
-            ack(record);
+            redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
         } catch (Exception e) {
             //예측못한 오류로 재시도 안함.
             log.error("job process error", e);
-            ack(record);
+            redisStreamClient.ack(STREAM_KEY, GROUP, recordId);
         }
-    }
-
-    private void ack(MapRecord<String, Object, Object> record) {
-        redis.opsForStream().acknowledge(STREAM_KEY, GROUP, record.getId());
     }
 
     private int parseAttempt(Object raw) {
@@ -177,12 +148,9 @@ public class SummarizationStreamWorker implements CommandLineRunner {
         return Integer.parseInt(raw.toString());
     }
 
-    private void loopBackoff() {
-        try {
-            Thread.sleep(200);
-        } catch (InterruptedException ie) {
-            Thread.currentThread()
-                  .interrupt(); // interrupt 상태 복구
-        }
+    private void backoff(int attempt) {
+        try { Thread.sleep(200L * attempt); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
+
 }
