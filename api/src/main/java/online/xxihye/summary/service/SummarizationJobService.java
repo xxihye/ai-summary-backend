@@ -41,7 +41,7 @@ public class SummarizationJobService {
     public CreateJobRes createJob(Long userNo, CreateJobReq req) {
         quotaService.consumeOrThrow(userNo);
 
-        String inputText = req.getText().trim();
+        String inputText = req.text().trim();
         String inputHash = HashUtil.sha256(inputText);
         int inputTextLen = inputText.length();
         LocalDateTime now = LocalDateTime.now();
@@ -60,7 +60,7 @@ public class SummarizationJobService {
                 ));
 
             inputRepository.save(new SummarizationInput(saved.getId(), inputText));
-            return new CreateJobRes(saved.getId(), saved.getStatus());
+            return new CreateJobRes(saved.getId(), saved.getStatus().name());
         }
 
         // 2) 신규 요청
@@ -75,7 +75,7 @@ public class SummarizationJobService {
         inputRepository.save(new SummarizationInput(saved.getId(), inputText));
         queue.publish(saved.getId());
 
-        return new CreateJobRes(saved.getId(), saved.getStatus());
+        return new CreateJobRes(saved.getId(), saved.getStatus().name());
     }
 
     //결과 조회

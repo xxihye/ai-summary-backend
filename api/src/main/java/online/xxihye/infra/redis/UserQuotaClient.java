@@ -22,9 +22,6 @@ public class UserQuotaClient {
         return v;
     }
 
-    /**
-     * TTL is only set when key is first created (count==1) to avoid resetting TTL.
-     */
     public void expireIfFirstHit(String key, long count, Duration ttl) {
         if (count == 1L) {
             redisTemplate.expire(key, ttl);
