@@ -1,11 +1,12 @@
 package online.xxihye.summary.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-public class CreateJobReq {
-
+@Schema(description = "Job 생성 DTO")
+public record CreateJobReq(
+    @Schema(description = "요약할 원문 텍스트")
     @NotBlank
-    private String text;
-
-    public String getText() { return this.text; }
+    String text
+) {
 }

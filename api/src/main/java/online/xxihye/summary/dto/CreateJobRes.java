@@ -1,16 +1,13 @@
 package online.xxihye.summary.dto;
 
-import lombok.Getter;
-import online.xxihye.summary.domain.JobStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-@Getter
-public class CreateJobRes {
+@Schema(description = "Job 생성 응답 DTO")
+public record CreateJobRes(
+    @Schema(description = "생성된 Job ID")
+    Long jobId,
 
-    private final Long jobId;
-    private final String status;
-
-    public CreateJobRes(Long jobId, JobStatus status) {
-        this.jobId = jobId;
-        this.status = status.name();
-    }
+    @Schema(description = "Job 상태")
+    String status
+) {
 }
